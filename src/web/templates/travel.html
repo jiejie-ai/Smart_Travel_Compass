@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}AI旅游超级智能体 — 深度旅行规划{% endblock %}
+{% block content %}
+<div x-data="chatApp()" class="travel-page">
+    <header class="header">
+        <a href="/" class="back-btn">&larr; 返回</a>
+        <h1>AI旅游超级智能体</h1>
+        <span></span>
+    </header>
+    <div class="chat-container">
+        <div class="messages" x-ref="messages">
+            <template x-for="msg in messages" :key="msg.time">
+                <div :class="msg.isUser ? 'msg user' : 'msg ai'">
+                    <div class="bubble" x-html="msg.html"></div>
+                    <div class="time" x-text="msg.timeStr"></div>
+                </div>
+            </template>
+            <div x-show="loading" class="msg ai">
+                <div class="bubble typing">▋</div>
+            </div>
+        </div>
+        <form class="input-area" @submit.prevent="send">
+            <textarea
+                x-model="input"
+                @keydown.enter.prevent="send"
+                placeholder="输入你想去的旅行目的地……"
+                :disabled="loading"
+            ></textarea>
+            <button type="submit" :disabled="loading || !input.trim()">发送</button>
+        </form>
+    </div>
+</div>
+<script>
+function chatApp() {
+    return {
+        messages: [],
+        input: '',
+        loading: false,
+        eventSource: null,
+        buffer: '',
+        lastBubbleTime: 0,
+
+        init() {
+            this.addMsg(
+                '你好！我是 AI旅游超级智能体。我可以联网搜索最新旅游攻略、查询专业知识库、规划行程、生成PDF攻略。告诉我你想去哪里，我来帮你搞定一切！',
+                false
+            );
+        },
+
+        esc(s) {
+            return String(s).replace(/[&<>"']/g, (c) => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        },
+
+        addMsg(content, isUser) {
+            let html = content;
+            try { html = marked.parse(content); } catch (e) {}
+            const now = Date.now();
+            this.messages.push({
+                content: content,
+                html: html,
+                isUser: isUser,
+                time: now,
+                timeStr: new Date(now).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            });
+            this.$nextTick(() => {
+                const el = this.$refs.messages;
+                if (el) el.scrollTop = el.scrollHeight;
+            });
+        },
+
+        send() {
+            const msg = this.input.trim();
+            if (!msg || this.loading) return;
+            this.addMsg(msg, true);
+            this.input = '';
+            this.loading = true;
+            this.buffer = '';
+            this.lastBubbleTime = Date.now();
+
+            if (this.eventSource) this.eventSource.close();
+            const url = `/api/ai/travel/agent/chat?message=${encodeURIComponent(msg)}`;
+            this.eventSource = new EventSource(url);
+
+            this.eventSource.onmessage = (e) => {
+                const data = e.data;
+                if (data === '[DONE]') {
+                    if (this.buffer) this.flushBuffer();
+                    this.loading = false;
+                    this.eventSource.close();
+                    return;
+                }
+                if (data.startsWith('[INTENT]')) {
+                    const raw = data.slice(8).trim();
+                    const labels = { plan_trip: '深度规划', quick_query: '即时问答', chitchat: '闲聊' };
+                    const label = labels[raw] || raw;
+                    this.buffer += '<div class="tool-status">🧭 识别意图：' + this.esc(label) + '</div>\n';
+                    return;
+                }
+                if (data.startsWith('[REWRITE]')) {
+                    let q = data.slice(9).trim();
+                    try { q = JSON.parse(q); } catch (err) {}
+                    this.buffer += '<div class="tool-status">🔍 检索词：' + this.esc(q) + '</div>\n';
+                    return;
+                }
+                if (data.startsWith('[TOOL]')) {
+                    this.buffer += '<div class="tool-status">' + data + '</div>\n';
+                    return;
+                }
+                if (data.startsWith('[ERROR]')) {
+                    this.addMsg('❌ ' + data, false);
+                    this.loading = false;
+                    this.eventSource.close();
+                    return;
+                }
+                try {
+                    const text = JSON.parse(data);
+                    this.buffer += text;
+                    const lastChar = text.slice(-1);
+                    if ('。！？…'.includes(lastChar) || this.buffer.length > 500) {
+                        this.flushBuffer();
+                    }
+                } catch (err) {
+                    this.buffer += data;
+                }
+            };
+
+            this.eventSource.onerror = () => {
+                if (this.buffer && this.buffer.trim()) this.flushBuffer();
+                this.loading = false;
+                this.eventSource.close();
+            };
+        },
+
+        flushBuffer() {
+            const buf = this.buffer.trim();
+            if (!buf) return;
+            const now = Date.now();
+            const elapsed = now - this.lastBubbleTime;
+            if (elapsed < 800) {
+                setTimeout(() => this.flushBuffer(), 800 - elapsed);
+                return;
+            }
+            const content = buf.replace(/^Step\s*\d+\s*:\s*/gm, '').trim();
+            this.addMsg(content, false);
+            this.buffer = '';
+            this.lastBubbleTime = Date.now();
+        },
+    };
+}
+</script>
+{% endblock %}

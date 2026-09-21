@@ -1,0 +1,35 @@
+# ===== 敏感信息（绝对不能提交）=====
+# 真实 API 密钥，只保留 .env.example 模板
+.env
+
+# ===== 个人文件 =====
+简历.pdf
+上海小厂全栈面经.jpg
+北京小众景点琉璃胡同深度游.md
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+# 误放进项目里的完整 Python 虚拟环境
+check_pdf/
+
+# ===== 运行时产物 =====
+# 生成的 PDF 攻略与测试文件
+tmp/
+.pytest_cache/
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+*.swp
+
+# ===== Claude Code 本地配置（含本机路径，勿提交）=====
+.claude/settings.local.json
